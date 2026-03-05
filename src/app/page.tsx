@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { CompressionProgress } from "~/app/_components/compression-progress";
 import { DevicePicker } from "~/app/_components/device-picker";
 import { LivePreview } from "~/app/_components/live-preview";
 import { PresetSelector } from "~/app/_components/preset-selector";
@@ -277,12 +276,26 @@ export default function HomePage() {
               {originalBlob ? "Review & Download" : "Live Capture"}
             </h2>
           </div>
-          {!originalBlob ? (
+          {originalBlob && isCompressing ? (
+            <div className="w-full max-w-xs">
+              <div className="mb-1 flex items-center justify-between text-[11px] tracking-[0.14em] text-text-secondary">
+                <span>Compressing</span>
+                <span>{Math.round(compressionProgress * 100)}%</span>
+              </div>
+              <div className="h-2.5 w-full overflow-hidden rounded-full bg-stage-900">
+                <div
+                  className="h-full rounded-full bg-primary-400 transition-all duration-200"
+                  style={{ width: `${Math.round(compressionProgress * 100)}%` }}
+                />
+              </div>
+            </div>
+          ) : null}
+          {!originalBlob && !isCompressing ? (
             <p className="text-xs tracking-[0.16em] text-text-secondary">{remainingText}</p>
           ) : null}
         </div>
 
-        <div className="grid gap-4 lg:grid-cols-[1.25fr_0.75fr]">
+        <div className="grid items-stretch gap-4 lg:grid-cols-[1.25fr_0.75fr]">
           {originalBlob ? (
             <RecordingPreview
               blob={originalBlob}
@@ -294,20 +307,16 @@ export default function HomePage() {
           )}
 
           {originalBlob ? (
-            <div className="flex h-full flex-col">
-              {isCompressing ? (
-                <div className="mb-3">
-                  <CompressionProgress progress={compressionProgress} />
-                </div>
-              ) : null}
+            <div className="flex h-full min-h-0 flex-col rounded-3xl border border-border/70 bg-surface-800/80 p-4 shadow-xl shadow-black/30 backdrop-blur-sm sm:p-5 lg:min-h-[24rem]">
               <PresetSelector
+                className="flex-1"
                 value={presetId}
                 disabled={isRecording || isCompressing}
                 onChange={(nextPresetId) => {
                   handlePresetSelect(nextPresetId);
                 }}
               />
-              <div className="mt-auto space-y-3 pt-3">
+              <div className="mt-4 space-y-3">
                 <button
                   type="button"
                   disabled={isRecording || isCompressing}
