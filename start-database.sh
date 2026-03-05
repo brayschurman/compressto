@@ -1,0 +1,117 @@
+#!/usr/bin/env bash
+# Use this script to start a docker container for a local development database
+
+# TO RUN ON WINDOWS:
+# 1. Install WSL (Windows Subsystem for Linux) - https://learn.microsoft.com/en-us/windows/wsl/install
+# 2. Install Docker Desktop or Podman Deskop
+# - Docker Desktop for Windows - https://docs.docker.com/docker-for-windows/install/
+# - Podman Desktop - https://podman.io/getting-started/installation
+# 3. Open WSL - `wsl`
+# 4. Run this script - `./start-database.sh`
+
+# On Linux and macOS you can run this script directly - `./start-database.sh`
+
+# import env variables from .env
+set -a
+source .env
+
+DB_PASSWORD=$(echo "$DATABASE_URL" | awk -F':' '{print $3}' | awk -F'@' '{print $1}')
+DB_PORT=$(echo "$DATABASE_URL" | awk -F':' '{print $4}' | awk -F'\/' '{print $1}')
+DB_NAME=$(echo "$DATABASE_URL" | awk -F'/' '{print $4}')
+DB_CONTAINER_NAME="$DB_NAME-postgres"
+
+get_mapped_port() {
+  $DOCKER_CMD port "$DB_CONTAINER_NAME" 5432/tcp 2>/dev/null | awk -F: 'END {print $NF}'
+}
+
+if ! [ -x "$(command -v docker)" ] && ! [ -x "$(command -v podman)" ]; then
+  echo -e "Docker or Podman is not installed. Please install docker or podman and try again.\nDocker install guide: https://docs.docker.com/engine/install/\nPodman install guide: https://podman.io/getting-started/installation"
+  exit 1
+fi
+
+# determine which docker command to use
+if [ -x "$(command -v docker)" ]; then
+  DOCKER_CMD="docker"
+elif [ -x "$(command -v podman)" ]; then
+  DOCKER_CMD="podman"
+fi
+
+if ! $DOCKER_CMD info > /dev/null 2>&1; then
+  echo "$DOCKER_CMD daemon is not running. Please start $DOCKER_CMD and try again."
+  exit 1
+fi
+
+if ! [[ "$DB_PORT" =~ ^[0-9]+$ ]] || [ "$DB_PORT" -lt 1 ] || [ "$DB_PORT" -gt 65535 ]; then
+  echo "Invalid port '$DB_PORT' in DATABASE_URL."
+  echo "Set DATABASE_URL to a valid host port, for example: postgresql://postgres:password@localhost:5555/$DB_NAME"
+  exit 1
+fi
+
+if [ "$($DOCKER_CMD ps -q -f name=$DB_CONTAINER_NAME)" ]; then
+  MAPPED_PORT=$(get_mapped_port)
+  if [ -n "$MAPPED_PORT" ] && [ "$MAPPED_PORT" != "$DB_PORT" ]; then
+    echo "Database container '$DB_CONTAINER_NAME' is running on localhost:$MAPPED_PORT, but DATABASE_URL is set to localhost:$DB_PORT."
+    echo "Update DATABASE_URL or recreate the container so ports match."
+  else
+    echo "Database container '$DB_CONTAINER_NAME' already running on localhost:$DB_PORT"
+  fi
+  exit 0
+fi
+
+if [ "$($DOCKER_CMD ps -q -a -f name=$DB_CONTAINER_NAME)" ]; then
+  if ! $DOCKER_CMD start "$DB_CONTAINER_NAME"; then
+    echo "Failed to start existing container '$DB_CONTAINER_NAME'."
+    echo "It may be pinned to a busy port. Remove it and rerun this script to recreate with localhost:$DB_PORT."
+    exit 1
+  fi
+  MAPPED_PORT=$(get_mapped_port)
+  if [ -n "$MAPPED_PORT" ] && [ "$MAPPED_PORT" != "$DB_PORT" ]; then
+    echo "Existing database container '$DB_CONTAINER_NAME' started on localhost:$MAPPED_PORT."
+    echo "DATABASE_URL is configured for localhost:$DB_PORT. Update DATABASE_URL or recreate the container."
+  else
+    echo "Existing database container '$DB_CONTAINER_NAME' started on localhost:$DB_PORT"
+  fi
+  exit 0
+fi
+
+if command -v nc >/dev/null 2>&1; then
+  if nc -z localhost "$DB_PORT" 2>/dev/null; then
+    echo "Port $DB_PORT is already in use."
+    echo "Set a different port in DATABASE_URL (for example localhost:5555) and rerun."
+    exit 1
+  fi
+else
+  echo "Warning: Unable to check if port $DB_PORT is already in use (netcat not installed)"
+  read -p "Do you want to continue anyway? [y/N]: " -r REPLY
+  if ! [[ $REPLY =~ ^[Yy]$ ]]; then
+    echo "Aborting."
+    exit 1
+  fi
+fi
+
+if [ "$DB_PASSWORD" = "password" ]; then
+  echo "You are using the default database password"
+  read -p "Should we generate a random password for you? [y/N]: " -r REPLY
+  if ! [[ $REPLY =~ ^[Yy]$ ]]; then
+    echo "Please change the default password in the .env file and try again"
+    exit 1
+  fi
+  # Generate a random URL-safe password
+  DB_PASSWORD=$(openssl rand -base64 12 | tr '+/' '-_')
+  if [[ "$(uname)" == "Darwin" ]]; then
+    # macOS requires an empty string to be passed with the `i` flag
+    sed -i '' "s#:password@#:$DB_PASSWORD@#" .env
+  else
+    sed -i "s#:password@#:$DB_PASSWORD@#" .env
+  fi
+fi
+
+$DOCKER_CMD run -d \
+  --name $DB_CONTAINER_NAME \
+  -e POSTGRES_USER="postgres" \
+  -e POSTGRES_PASSWORD="$DB_PASSWORD" \
+  -e POSTGRES_DB="$DB_NAME" \
+  -p "$DB_PORT":5432 \
+  docker.io/postgres >/dev/null
+
+echo "Database container '$DB_CONTAINER_NAME' was successfully created on localhost:$DB_PORT"
