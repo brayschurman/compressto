@@ -203,6 +203,10 @@ export default function HomePage() {
     setPresetId(nextPresetId);
   }, []);
 
+  const handleHomeReset = useCallback((): void => {
+    window.location.assign("/");
+  }, []);
+
   const handleDownloadCompressed = useCallback(async (): Promise<void> => {
     if (!originalBlob || isRecording || isCompressing) {
       return;
@@ -250,7 +254,16 @@ export default function HomePage() {
   return (
     <main className="relative mx-auto flex min-h-screen w-full max-w-5xl flex-col gap-6 px-4 py-8 sm:py-12">
       <header className="text-center animate-slide-up">
-        <h1 className="mt-2 text-4xl text-primary-400 sm:text-6xl">compress.to</h1>
+        <h1 className="mt-2 text-4xl text-primary-400 sm:text-6xl">
+          <button
+            type="button"
+            onClick={handleHomeReset}
+            className="[font:inherit] text-inherit transition-transform duration-200 hover:scale-105 focus-visible:scale-105"
+            aria-label="Go home and reset"
+          >
+            compress.to
+          </button>
+        </h1>
         <p className="mt-3 text-sm text-text-secondary sm:text-base">
           Client-side video recording compressor.
         </p>
